@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>QRIS Payment</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      padding: 20px; 
+      text-align: center; 
+      background: #f8f9fa; 
+      color: #333;
+    }
+
+    img.qr-code {
+      max-width: 400px;
+      width: 90%;
+      height: auto;
+      margin: 20px auto;
+      display: block;
+      border-radius: 12px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    .upload-section { 
+      margin-top: 20px; 
+      max-width: 350px; 
+      margin-left: auto; 
+      margin-right: auto;
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    #amountToPay { 
+      font-size: 1.3em; 
+      font-weight: bold; 
+      margin-top: 10px; 
+      color: #2c3e50;
+    }
+
+    button { 
+      padding: 10px 20px; 
+      font-size: 1em; 
+      margin-top: 10px; 
+      border: none; 
+      border-radius: 8px; 
+      background: #4caf50; 
+      color: #fff; 
+      cursor: pointer; 
+      transition: background 0.3s;
+    }
+
+    button:disabled { 
+      background: #a5d6a7; 
+      cursor: not-allowed; 
+    }
+
+    #progressContainer { 
+      width: 100%; 
+      background: #e0e0e0; 
+      border-radius: 12px; 
+      overflow: hidden; 
+      margin: 15px 0; 
+      height: 20px; 
+      display: none;
+    }
+
+    #progressBar { 
+      height: 100%; 
+      width: 0%; 
+      background: linear-gradient(90deg, #4caf50, #81c784); 
+      text-align: center; 
+      color: white; 
+      line-height: 20px; 
+      font-size: 12px; 
+      transition: width 0.2s ease;
+    }
+
+    #statusMsg {
+      font-size: 0.95em;
+      margin-top: 10px;
+      min-height: 24px;
+    }
+
+    @media (max-width: 400px) {
+      .upload-section {
+        padding: 15px;
+      }
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h2>Pembayaran QRIS</h2>
+  <p>📷 Silakan screenshot kode di bawah dan lakukan pembayaran dengan aplikasi mobile banking Anda.</p>
+  <img src="/assets/qris versi 1.jpeg" alt="Kode QRIS" class="qr-code" />
+  <p id="amountToPay">💰 Menghitung total...</p>
+
+  <div class="upload-section">
+    <p>⬆️ Upload bukti transaksi Anda</p>
+    <input type="file" id="paymentProof" accept="image/*" />
+    <button id="submitPayment">Kirim Bukti Pembayaran</button>
+    <div id="progressContainer">
+      <div id="progressBar">0%</div>
+    </div>
+    <p id="statusMsg"></p>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+  <script>
+    // Konfigurasi Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyDNvgS_PqEHU3llqHt0XHN30jJgiQWLkdc",
+      authDomain: "e-loyalty-12563.firebaseapp.com",
+      projectId: "e-loyalty-12563",
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const params = new URLSearchParams(window.location.search);
+    const orderId = params.get("orderId");
+
+    if (!orderId) {
+      document.getElementById("statusMsg").textContent = "⚠️ Referensi pesanan tidak ditemukan!";
+    }
+
+    // Tampilkan jumlah yang harus dibayar
+    async function displayAmount() {
+      if (!orderId) return;
+      try {
+        const doc = await db.collection("orders").doc(orderId).get();
+        if (!doc.exists) return;
+
+        const data = doc.data();
+        const subtotal = data.subtotal || 0;
+        const discount = data.discount || 0;
+        const tax = data.tax || 0;
+        const deliveryFee = data.deliveryFee || 0;
+
+        const total = subtotal - discount + tax;
+        const grandTotal = total + deliveryFee;
+        const amount = deliveryFee > 0 ? grandTotal : total;
+
+        document.getElementById("amountToPay").textContent =
+          `💰 Total yang harus dibayar: Rp${amount.toLocaleString("id-ID")}`;
+      } catch (err) {
+        console.error("❌ Gagal mengambil data pesanan:", err);
+        document.getElementById("amountToPay").textContent = "⚠️ Gagal menghitung total";
+      }
+    }
+
+    if (orderId) displayAmount();
+
+    // API Key ImgBB
+    const imgbbApiKey = "8cb647e6ce3e2dd18d960f95cf9a4c4d"; 
+
+    document.getElementById("submitPayment").onclick = async () => {
+      const file = document.getElementById("paymentProof").files[0];
+      if (!file) {
+        alert("⚠️ Silakan upload bukti pembayaran terlebih dahulu.");
+        return;
+      }
+
+      const submitBtn = document.getElementById("submitPayment");
+      const statusMsg = document.getElementById("statusMsg");
+      const progressContainer = document.getElementById("progressContainer");
+      const progressBar = document.getElementById("progressBar");
+
+      submitBtn.disabled = true;
+      statusMsg.textContent = "⬆️ Sedang mengupload bukti pembayaran, mohon tunggu...";
+      progressContainer.style.display = "block";
+      progressBar.style.width = "0%";
+      progressBar.textContent = "0%";
+
+      try {
+        // Convert file ke base64
+        const toBase64 = file => new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = () => resolve(reader.result.split(",")[1]);
+          reader.onerror = error => reject(error);
+        });
+
+        const base64Image = await toBase64(file);
+
+        // Upload ke ImgBB
+        const formData = new FormData();
+        formData.append("image", base64Image);
+        formData.append("name", `order-${orderId}`);
+
+        const uploadResponse = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbApiKey}`, {
+          method: "POST",
+          body: formData
+        });
+
+        const data = await uploadResponse.json();
+        if (!data.success) throw new Error("Upload ke ImgBB gagal");
+
+        const fileUrl = data.data.url;
+
+        // Update Firestore
+        await db.collection("orders").doc(orderId).update({
+          paymentMethod: "qris",
+          paymentStatus: "success",
+          proofUrl: fileUrl,
+          proofUploadedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        progressBar.style.width = "100%";
+        progressBar.textContent = "100%";
+        statusMsg.textContent = "✅ Bukti pembayaran berhasil diupload!";
+        setTimeout(() => {
+          window.location.href = `summary.html?orderId=${orderId}&status=success`;
+        }, 1500);
+
+      } catch (err) {
+        console.error("❌ Upload error:", err);
+        statusMsg.textContent = "❌ Gagal mengupload bukti pembayaran. Silakan coba lagi.";
+        submitBtn.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>

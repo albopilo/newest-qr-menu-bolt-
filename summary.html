@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Order Summary</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f5f6fa;
+      padding: 15px;
+      margin: 0;
+      color: #333;
+    }
+    .summary {
+      max-width: 500px;
+      margin: auto;
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+    }
+    .summary h2 {
+      text-align: center;
+      color: #2c3e50;
+      margin-bottom: 20px;
+    }
+    .summary p, .summary ul { margin: 8px 0; font-size: 1em; }
+    ul#itemsList { list-style: none; padding: 0; margin: 0; }
+    ul#itemsList li { padding: 6px 0; border-bottom: 1px solid #eee; }
+    .label { font-weight: 600; color: #555; }
+    #subtotalDisplay, #discountDisplay, #taxDisplay, #totalDisplay, #deliveryFeeDisplay, #grandTotalDisplay {
+      float: right; font-weight: 500;
+    }
+    p#grandTotalRow {
+      font-size: 1.1em;
+      font-weight: bold;
+      color: #4caf50;
+      border-top: 2px solid #4caf50;
+      padding-top: 8px;
+      margin-top: 10px;
+      display: none;
+    }
+    #voucherNotice {
+      background: #e8f5e9;
+      color: #2e7d32;
+      border: 1px solid #4caf50;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.95em;
+      margin: 10px 0;
+      display: none;
+    }
+    #confirmBtn {
+      margin-top: 20px; padding: 12px;
+      background-color: #4CAF50; color: white;
+      border: none; font-size: 16px;
+      border-radius: 8px; cursor: pointer; width: 100%;
+      transition: 0.3s;
+    }
+    #confirmBtn:hover { background-color: #45a049; }
+    #confirmBtn:disabled { background-color: #a5d6a7; cursor: not-allowed; }
+    #voucherSection input {
+      width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ccc;
+      margin: 6px 0; font-size: 0.95em;
+    }
+    #voucherSection button {
+      padding: 10px; border-radius: 8px; border: none;
+      background-color: #3498db; color: white; cursor: pointer; margin-top: 6px;
+      transition: 0.3s;
+    }
+    #voucherSection button:hover { background-color: #2980b9; }
+    #voucherMsg { font-size: 0.9em; margin-top: 4px; min-height: 18px; }
+    #paymentSection { margin: 20px 0; padding-top: 10px; border-top: 1px solid #eee; }
+    #paymentSection label { font-weight: 600; }
+    #paymentSection .cash-instruction { margin-top: 8px; color: #555; font-size: 0.95em; }
+    @media(max-width: 480px){
+      body { padding: 10px; }
+      .summary { padding: 15px; }
+      #confirmBtn { font-size: 0.95em; padding: 10px; }
+      #voucherSection input { font-size: 0.9em; }
+    }
+  </style>
+</head>
+<body>
+  <div class="summary">
+    <h2>Order Summary</h2>
+    <p><span class="label">Table:</span> <span id="tableDisplay"></span></p>
+    <p><span class="label">Guest:</span> <span id="guestDisplay"></span></p>
+    <ul id="itemsList"></ul>
+
+    <p><span class="label">Subtotal:</span> <span id="subtotalDisplay"></span></p>
+    <p><span class="label">Discount:</span> <span id="discountDisplay"></span></p>
+    <p><span class="label">Tax:</span> <span id="taxDisplay"></span></p>
+    <p><span class="label">Total:</span> <span id="totalDisplay"></span></p>
+
+    <p id="deliveryRow" style="display:none;">
+      <span class="label">Delivery Fee:</span> <span id="deliveryFeeDisplay"></span>
+    </p>
+    <p id="grandTotalRow"><span class="label">Grand Total:</span> <span id="grandTotalDisplay"></span></p>
+
+    <div id="voucherNotice"></div>
+
+    <div id="voucherSection">
+      <label for="voucherInput" class="label">Voucher Code:</label>
+      <input type="text" id="voucherInput" placeholder="Enter voucher code"/>
+      <button id="applyVoucherBtn">Apply</button>
+      <p id="voucherMsg"></p>
+    </div>
+
+    <div id="phoneSection" style="margin-top:12px; display:none;">
+  <label for="phoneInput" class="label">Phone Number:</label>
+  <input
+    type="tel"
+    id="phoneInput"
+    placeholder="08xxxxxxxxxx"
+    style="width:100%; padding:10px; border-radius:8px; border:1px solid #ccc; font-size:0.95em;"
+  />
+  <p style="font-size:0.85em; color:#666; margin-top:4px;">
+    Needed so staff can contact you if required.
+  </p>
+</div>
+
+<button id="contactCafeBtn" style="
+  margin-top:12px;
+  padding:10px;
+  width:100%;
+  border-radius:8px;
+  border:none;
+  background:#ff9800;
+  color:#fff;
+  font-size:15px;
+  cursor:pointer;">
+  ☎️ Contact Café
+</button>
+
+    <div id="paymentSection">
+      <label class="label">Payment Method:</label><br>
+      <input type="radio" name="paymentMethod" id="payCash" value="cash"> 
+      <label for="payCash">Cash</label><br>
+      <input type="radio" name="paymentMethod" id="payQRIS" value="qris"> 
+      <label for="payQRIS">QRIS</label>
+      <div id="cashInstruction" class="cash-instruction" style="display:none;">💵 Please pay at the receptionist on 1st floor.</div>
+    </div>
+
+<p>
+  <span class="label">Open Hours:</span><br>
+  Sunday to Friday : 08:30 - 19:30<br>
+  Saturday : 08:30 - 21:30
+</p>
+
+    <button id="confirmBtn">✅ Confirm Order</button>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<script>
+// Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyDNvgS_PqEHU3llqHt0XHN30jJgiQWLkdc",
+  authDomain: "e-loyalty-12563.firebaseapp.com",
+  projectId: "e-loyalty-12563",
+};
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// URL params
+const urlParams = new URLSearchParams(window.location.search);
+const orderId = urlParams.get("orderId");
+let status = urlParams.get("status");
+
+// ✅ Table hydration from URL (index → summary)
+ const tableFromUrl =
+   urlParams.get("table") ||
+   urlParams.get("tableName") ||
+   urlParams.get("tbl") ||
+   "";
+
+// DOM
+const tableDisplay = document.getElementById("tableDisplay");
+const guestDisplay = document.getElementById("guestDisplay");
+const itemsList = document.getElementById("itemsList");
+const subtotalDisplay = document.getElementById("subtotalDisplay");
+const discountDisplay = document.getElementById("discountDisplay");
+const taxDisplay = document.getElementById("taxDisplay");
+const totalDisplay = document.getElementById("totalDisplay");
+const deliveryRow = document.getElementById("deliveryRow");
+const deliveryFeeDisplay = document.getElementById("deliveryFeeDisplay");
+const grandTotalRow = document.getElementById("grandTotalRow");
+const grandTotalDisplay = document.getElementById("grandTotalDisplay");
+const confirmBtn = document.getElementById("confirmBtn");
+const voucherInput = document.getElementById("voucherInput");
+const applyVoucherBtn = document.getElementById("applyVoucherBtn");
+const voucherMsg = document.getElementById("voucherMsg");
+const voucherNotice = document.getElementById("voucherNotice");
+const payCash = document.getElementById("payCash");
+const payQRIS = document.getElementById("payQRIS");
+const cashInstruction = document.getElementById("cashInstruction");
+const paymentSection = document.getElementById("paymentSection");
+const phoneSection = document.getElementById("phoneSection");
+const phoneInput = document.getElementById("phoneInput");
+const contactCafeBtn = document.getElementById("contactCafeBtn");
+
+ const memberId = urlParams.get("memberId") || "";
+ const memberPhoneFromUrl = urlParams.get("memberPhone") || "";
+ const isMember = Boolean(memberId && memberPhoneFromUrl);
+
+
+
+// Vars
+let table = tableFromUrl || "unknown";
+let guestName = "Guest";
+let items = [];
+let subtotal = 0;
+let discount = 0;
+let tax = 0;
+let deliveryFee = 0;
+let paymentMethod = "";
+let qrisOrderCreated = null;
+
+// helper: get Jakarta date as YYYY-MM-DD (en-CA)
+function jakartaDateString() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+}
+
+function isMilleTable(t) {
+  return /mille\s*[123]/i.test(t || "");
+}
+
+
+function resolvePhoneOrFail() {
+   if (isMember) {
+     return memberPhoneFromUrl;
+   }
+
+   const p = phoneInput?.value?.trim();
+   if (!p) {
+     alert("⚠️ Please enter your phone number.");
+     throw new Error("PHONE_REQUIRED");
+   }
+
+   return p;
+ }
+
+
+// ================= SCHEMA & VALIDATION =================
+const SCHEMA_VERSION = 1;
+
+function isValidItemArray(arr) {
+  return Array.isArray(arr) &&
+    arr.length > 0 &&
+    arr.every(i =>
+      i &&
+      typeof i.name === "string" &&
+      typeof i.qty === "number" &&
+      i.qty > 0
+    );
+}
+
+function hardFail(message) {
+  alert(message);
+  document.body.innerHTML = `
+    <div style="padding:24px;text-align:center">
+      <h2>⚠️ Order Error</h2>
+      <p>${message}</p>
+      <p>Please contact staff.</p>
+    </div>`;
+  throw new Error(message);
+}
+
+
+document.addEventListener("DOMContentLoaded", async () => {
+
+  if (isMember) { // Signed-in member → phone already known
+  phoneSection.style.display = "none";
+} else { // Guest → must enter phone
+  phoneSection.style.display = "block";
+}
+
+  try {
+    let existingVoucherId = null;
+
+      // ================= HYDRATION =================
+let hydratedFrom = "none";
+
+if (orderId) {
+  const snap = await db.collection("orders").doc(orderId).get();
+  if (snap.exists) {
+    const d = snap.data();
+
+    if (isValidItemArray(d.items)) {
+      table = d.table || table || tableFromUrl || "unknown";
+      guestName = d.guestName || guestName;
+      items = d.items;
+      subtotal = Number(d.subtotal) || 0;
+      discount = Number(d.discount) || 0;
+      tax = Number(d.tax) || 0;
+      deliveryFee = Number(d.deliveryFee) || 0;
+      paymentMethod = d.paymentMethod || "";
+      existingVoucherId = d.voucherId || null;
+      hydratedFrom = "firestore";
+    }
+    if (d.paymentStatus === "success") {
+         status = "success";
+         }
+  }
+}
+
+// Fallback ONLY if Firestore invalid
+if (!isValidItemArray(items)) {
+  try {
+    const urlItems = JSON.parse(decodeURIComponent(urlParams.get("items") || "[]"));
+    if (isValidItemArray(urlItems)) {
+      items = urlItems;
+      subtotal = Number(urlParams.get("subtotal")) || 0;
+      discount = Number(urlParams.get("discount")) || 0;
+      tax = Number(urlParams.get("tax")) || 0;
+      hydratedFrom = "url";
+    }
+  } catch {}
+}
+
+// Absolute stop
+if (!isValidItemArray(items)) {
+  hardFail("Invalid or incomplete order data.");
+}
+
+console.info("Order hydrated from:", hydratedFrom);
+
+    // ✅ Force Mille tables to QRIS only
+    if (/mille/i.test(table)) {
+      // Hide cash option entirely for Mille tables
+      const cashRadio = document.getElementById("payCash");
+      const cashLabel = document.querySelector("label[for='payCash']");
+      if (cashRadio) cashRadio.style.display = "none";
+      if (cashLabel) cashLabel.style.display = "none";
+      cashInstruction.style.display = "none";
+      // Reset selection so only QRIS remains visible
+      payCash.checked = false;
+      paymentMethod = "qris";
+      payQRIS.checked = true;
+    }
+
+    // DOM update
+    tableDisplay.textContent = table;
+    guestDisplay.textContent = guestName;
+    itemsList.innerHTML = "";
+
+    items.forEach(item => {
+      const li = document.createElement("li");
+      li.textContent = `${item.qty} × ${item.name}`;
+      itemsList.appendChild(li);
+    });
+
+    // Delivery fee (Mille 1 & 3 only)
+    if (/mille\s*1/i.test(table) || /mille\s*3/i.test(table)) {
+      deliveryFee = 10000;
+      deliveryRow.style.display = "block";
+      deliveryFeeDisplay.textContent = `Rp${deliveryFee.toLocaleString("id-ID")}`;
+    }
+
+    // Show voucher if already applied
+    if (existingVoucherId) {
+      const voucherDoc = await db.collection("vouchers").doc(existingVoucherId).get();
+      if (voucherDoc.exists) {
+        voucherNotice.textContent = `🎟 Voucher applied: ${voucherDoc.data().code}`;
+        voucherNotice.style.display = "block";
+      }
+    }
+
+
+    // Pre-select payment
+    if (paymentMethod === "cash") payCash.checked = true;
+    if (paymentMethod === "qris") payQRIS.checked = true;
+    if (paymentMethod === "cash") cashInstruction.style.display = "block";
+
+    // Lock UI if order already success
+    if (status === "success") {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = "✅ Order Successful";
+      voucherInput.disabled = true;
+      applyVoucherBtn.disabled = true;
+      payCash.disabled = true;
+      payQRIS.disabled = true;
+      paymentSection.style.opacity = "0.6";
+    }
+
+    renderSummary();
+
+    // Payment selection
+    payCash.addEventListener("change", () => {
+      paymentMethod = "cash";
+      cashInstruction.style.display = "block";
+      confirmBtn.style.display = "block";
+    });
+
+    payQRIS.addEventListener("change", async () => {
+      paymentMethod = "qris";
+      cashInstruction.style.display = "none";
+      if (qrisOrderCreated || status === "success") return;
+      try {
+         let phone;
+ try {
+   phone = resolvePhoneOrFail();
+ } catch {
+   confirmBtn.disabled = false;
+  phoneInput?.focus();
+   return;
+ }
+
+        const { finalTotal, grandTotal } = renderSummary();
+        confirmBtn.disabled = true;
+
+       // ✅ Use Jakarta timezone date for correct staff-page filtering
+      const jakartaDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+      
+
+        // ✅ Trigger push notification (include orderId + url pointing to staff)
+        fetch("/.netlify/functions/newOrderPush", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: "🆕 New QRIS Order",
+            message: `Table ${table} placed a new QRIS order.`,
+            orderId: docRef.id,
+            url: `https://13e-menu.netlify.app/staff.html?orderId=${docRef.id}`
+          })
+        }).catch(e => console.warn("Push send failed:", e));
+
+        qrisOrderCreated = docRef;
+        confirmBtn.style.display = "none";
+        location.href = `qris.html?orderId=${docRef.id}`;
+      } catch (err) {
+        console.error(err);
+        confirmBtn.disabled = false;
+        alert("⚠️ Failed to prepare QRIS payment.");
+      }
+    });
+
+    // Voucher (unchanged)
+    applyVoucherBtn.addEventListener("click", async () => {
+      if (status === "success") return;
+      const code = voucherInput.value.trim().toUpperCase();
+      voucherMsg.style.color = "#d33";
+      if (!code) { voucherMsg.textContent = "⚠️ Please enter a voucher code."; return; }
+
+      try {
+        const snap = await db.collection("vouchers").where("code", "==", code).limit(1).get();
+        if (snap.empty) { voucherMsg.textContent = "❌ Invalid voucher code."; return; }
+        const voucherDoc = snap.docs[0];
+        const voucherRef = db.collection("vouchers").doc(voucherDoc.id);
+
+        await db.runTransaction(async (tx) => {
+          const today = new Date(); today.setHours(0,0,0,0);
+          const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+          const redemptionSnap = await tx.get(
+            voucherRef.collection("redemptions").where("timestamp", ">=", today).where("timestamp", "<", tomorrow)
+          );
+          if (voucherDoc.data().limitPerDay && redemptionSnap.size >= voucherDoc.data().limitPerDay)
+            throw new Error("DAILY_LIMIT_REACHED");
+
+          // Calculate discount
+          let orderDiscount = 0;
+          if (voucherDoc.data().type === "percent") orderDiscount = Math.floor(subtotal * (voucherDoc.data().value / 100));
+          else if (voucherDoc.data().type === "fixed") orderDiscount = voucherDoc.data().value;
+
+          // Save redemption + update order
+          let redemptionDocRef;
+          if (orderId) {
+            redemptionDocRef = voucherRef.collection("redemptions").doc(orderId);
+            tx.set(redemptionDocRef, {
+              timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+              table, guestName, orderId
+            });
+            tx.update(db.collection("orders").doc(orderId), {
+              voucherId: voucherDoc.id,
+              discount: orderDiscount
+            });
+          } else if (qrisOrderCreated) {
+            const qrisOrderId = qrisOrderCreated.id;
+            redemptionDocRef = voucherRef.collection("redemptions").doc(qrisOrderId);
+            tx.set(redemptionDocRef, {
+              timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+              table, guestName, orderId: qrisOrderId
+            });
+            tx.update(qrisOrderCreated, {
+              voucherId: voucherDoc.id,
+              discount: orderDiscount
+            });
+          }
+          discount = orderDiscount;
+        });
+
+        voucherMsg.style.color = "green";
+        voucherMsg.textContent = `✅ Voucher applied: ${code}`;
+        voucherNotice.textContent = `🎟 Voucher applied: ${code}`;
+        voucherNotice.style.display = "block";
+        renderSummary();
+      } catch (err) {
+        if (err.message === "DAILY_LIMIT_REACHED") voucherMsg.textContent = "❌ Voucher daily limit reached.";
+        else { console.error(err); voucherMsg.textContent = "⚠️ Failed to apply voucher."; }
+      }
+    });
+
+    // Confirm (Cash)
+confirmBtn.addEventListener("click", async () => {
+  if (status === "success") return;
+
+  try {
+    if (!paymentMethod) {
+      alert("⚠️ Please select a payment method.");
+      return;
+    }
+
+    confirmBtn.disabled = true;
+
+    let phone;
+    try {
+      phone = resolvePhoneOrFail();
+    } catch {
+      confirmBtn.disabled = false;
+      return;
+    }
+
+    const { finalTotal, grandTotal } = renderSummary();
+
+    const jakartaDate = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Jakarta"
+    });
+
+    // ✅ CREATE ORDER FIRST
+    const docRef = await db.collection("orders").add({
+      subtotal,
+      discount,
+      tax,
+      deliveryFee,
+      total: finalTotal,
+      grandTotal,
+      table,
+      guestName,
+      items: JSON.parse(JSON.stringify(items)),
+      schemaVersion: SCHEMA_VERSION,
+      date: jakartaDate,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+      status: "pending",
+      phone,
+      isMember,
+      memberId: memberId || null,
+      paymentMethod: isMilleTable(table) ? "qris" : paymentMethod,
+      paymentStatus: "pending"
+    });
+
+    // 🔔 Notify staff
+    fetch("/.netlify/functions/newOrderPush", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "🆕 New Order",
+        message: `Table ${table} placed a new order.`,
+        orderId: docRef.id,
+        url: `https://13e-menu.netlify.app/staff.html?orderId=${docRef.id}`
+      })
+    }).catch(() => {});
+
+    // ✅ REDIRECT LOGIC (AFTER ORDER EXISTS)
+    if (isMilleTable(table) || paymentMethod === "qris") {
+      location.href = `qris.html?orderId=${docRef.id}`;
+      return;
+    }
+
+    // Cash (non-Mille)
+    alert("✅ Order confirmed! Please pay at the receptionist.");
+
+  } catch (err) {
+    console.error(err);
+    alert("❌ Failed to confirm order.");
+    confirmBtn.disabled = false;
+  }
+});
+
+
+  } catch (err) {
+    console.error("Init summary error:", err);
+  }
+});
+
+if (contactCafeBtn) {
+  contactCafeBtn.addEventListener("click", () => {
+    const cafeWaNumber = "6282188884663"; // no +, WhatsApp format
+    const tableName = table || tableFromUrl || "Unknown Table";
+    const id = orderId || "N/A";
+
+    const message = encodeURIComponent(
+      `Hello Cafe, please check order ${id} (${tableName})`
+    );
+
+    const waUrl = `https://wa.me/${cafeWaNumber}?text=${message}`;
+
+    window.open(waUrl, "_blank");
+  });
+}
+
+
+
+// Render summary
+function renderSummary() {
+  subtotalDisplay.textContent = `Rp${subtotal.toLocaleString("id-ID")}`;
+  discountDisplay.textContent = `Rp${discount.toLocaleString("id-ID")}`;
+  taxDisplay.textContent = `Rp${tax.toLocaleString("id-ID")}`;
+  const finalTotal = subtotal - discount + tax;
+  totalDisplay.textContent = `Rp${finalTotal.toLocaleString("id-ID")}`;
+  const grandTotal = finalTotal + deliveryFee;
+  if (deliveryFee > 0) {
+    grandTotalDisplay.textContent = `Rp${grandTotal.toLocaleString("id-ID")}`;
+    grandTotalRow.style.display = "block";
+  } else {
+    grandTotalRow.style.display = "none";
+  }
+  return { finalTotal, grandTotal };
+}
+</script>
+
+</body>
+</html>

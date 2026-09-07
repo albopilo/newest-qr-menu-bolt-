@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>13e Staff Dashboard</title>
+
+  <!-- ✅ PWA + TWA Essentials -->
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#3b82f6" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/assets/icon-192.png" type="image/png" />
+
+  <style>
+    :root {
+      --bg: #f9f9f9;
+      --card: #ffffff;
+      --muted: #6b7280;
+      --accent: #3b82f6;
+      --success: #10b981;
+      --danger: #ef4444;
+    }
+    body.staff {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: var(--bg);
+      margin: 0; padding: 18px;
+      color: #111827;
+    }
+    h1 { text-align:center; margin: 0 0 12px; font-size: 1.4rem; }
+
+    #orderControls {
+      display:flex; gap:8px; flex-wrap:wrap; justify-content:center; align-items:center;
+      margin-bottom:12px; position: sticky; top:0; background:var(--bg);
+      padding:8px 0; z-index:30;
+    }
+    .btn {
+      border: none; padding: 8px 12px; border-radius:8px;
+      background:#e5e7eb; cursor:pointer; font-size:0.95rem; transition:background .15s;
+    }
+    .btn:hover { background:#d1d5db; }
+    .btn.active { background: var(--accent); color: #fff; }
+    #orderDate {
+      padding:6px 8px; border-radius:8px; border:1px solid #d1d5db; font-size:1rem;
+    }
+    #orderList { margin-top: 12px; max-width: 840px; margin-inline:auto; }
+    .order {
+      background: var(--card); border-radius:10px; padding:12px;
+      margin-bottom:12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      transition: box-shadow .18s;
+    }
+    .order .meta {
+      display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap;
+    }
+    .order p { margin:6px 0; color:#111827; font-size:0.95rem; }
+    .order ul { margin:6px 0 8px 18px; padding:0; }
+    .order .status { font-weight:700; margin-top:6px; }
+    .controls-row { margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .btn.minimal { background:#f3f4f6; border-radius:6px; padding:7px 10px; }
+    .btn.contact { background:#25D366; color:white; text-decoration:none; padding:7px 10px; border-radius:6px; }
+    .loading, .empty { text-align:center; color:var(--muted); padding:18px 0; }
+    .badge {
+      padding:6px 8px; border-radius:999px; font-size:0.85rem; font-weight:600;
+      display:inline-block;
+    }
+    .badge.pending { background:#fff7ed; color:#7c2d12; border:1px solid #f97316; }
+    .badge.preparing { background:#eff6ff; color:#1e3a8a; border:1px solid #3b82f6; }
+    .badge.served { background:#ecfdf5; color:#064e3b; border:1px solid #10b981; }
+    .badge.cancelled { background:#fee2e2; color:#991b1b; border:1px solid #ef4444; }
+    .topline { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    @media (max-width:600px) {
+      .meta { flex-direction:column; align-items:flex-start; }
+      .controls-row { width:100%; }
+      #orderControls { padding-inline:8px; }
+    }
+  </style>
+</head>
+
+<body class="staff">
+  <h1>📋 13e Staff Dashboard</h1>
+
+  <div id="orderControls">
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <button class="btn active" data-filter="all">All</button>
+      <button class="btn" data-filter="incoming">Incoming</button>
+      <button class="btn" data-filter="served">Served</button>
+      <button class="btn" data-filter="cancelled">Cancelled</button>
+    </div>
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+      <label for="orderDate" style="font-size:0.9rem; color:var(--muted);">Orders for</label>
+      <input id="orderDate" type="date" />
+    </div>
+  </div>
+
+  <div id="orderList" role="list"></div>
+
+  <audio id="newOrderSound" preload="auto" src="https://albopilo.github.io/newest-qr-menu/assets/sound.mp3"></audio>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+   window.IS_ANDROID_WEBVIEW =
+     /wv|android/i.test(navigator.userAgent) &&
+     !/chrome/i.test(navigator.userAgent);
+ </script>
+<script src="app.js?v=2025-01-STAFF"></script>
+
+  <script>
+  (function(){
+    const phoneMap = {
+      "mille 1": "6282217091699",
+      "mille 2": "6281220039853",
+      "mille 3": "6282261863984",
+    };
+
+     function resolveGuestPhone(d) {
+   return (
+     d.phone ||
+     d.memberPhone ||
+     d.member?.phone ||
+     d.contactPhone ||
+     null
+   );
+ }
+
+
+    const orderList = document.getElementById('orderList');
+    const orderDate = document.getElementById('orderDate');
+    const audio = document.getElementById('newOrderSound');
+    const filterButtons = [...document.querySelectorAll('#orderControls .btn[data-filter]')];
+    let loadedOrders = new Map();
+    let activeRepeaters = new Map();
+    let currentFilter = 'incoming';
+    window._staff_unsub = null;
+
+    const notifiedOrders = new Set(JSON.parse(localStorage.getItem('notifiedOrders') || '[]'));
+    const markNotified = id => {
+      notifiedOrders.add(id);
+      localStorage.setItem('notifiedOrders', JSON.stringify([...notifiedOrders]));
+    };
+
+    function getDb(){ return window.db || (window.firebase?.firestore?.()); }
+
+    const escapeHtml = s => String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    const tsToJakartaTime = ts => !ts ? '—' : (ts.toDate?.()||new Date(ts)).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jakarta'});
+    const todayJakarta = () => {
+      const d = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Jakarta'}));
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    };
+
+    function extractItems(data){
+      const arrs=[data.items,data.orderItems,data.products,data.orderedItems,data.orderData?.items,data.orderData?.products];
+      for(const a of arrs){
+        if(Array.isArray(a)) return a;
+        if(typeof a==='string'&&a.trim().startsWith('[')){
+          try{return JSON.parse(a);}catch{}
+        }
+      }
+      return [];
+    }
+
+const badge = s => {
+  s = (s || '').trim().toLowerCase();
+  if (s === 'preparing' || s.includes('prepare')) return '<span class="badge preparing">PREPARING</span>';
+  if (s === 'served' || s.includes('serve')) return '<span class="badge served">SERVED</span>';
+  if (s === 'cancelled' || s.includes('cancel')) return '<span class="badge cancelled">CANCELLED</span>';
+  return '<span class="badge pending">PENDING</span>';
+};
+
+
+    function createCard(id,d){
+      const table=d.table||'—', guest=d.guestName||'Guest';
+      const items=extractItems(d);
+      const time=tsToJakartaTime(d.timestamp||d.createdAt);
+      const status = (d.kitchenStatus && d.kitchenStatus.trim()) ? d.kitchenStatus.toLowerCase()
+             : (d.status && d.status.trim()) ? d.status.toLowerCase()
+             : 'pending';
+      const method=(d.paymentMethod||'unspecified').toUpperCase();
+      const payStatus=(d.paymentStatus||'unknown').toLowerCase();
+      const subtotal=+d.subtotal||0,disc=+d.discount||0,tax=+d.tax||0,fee=+d.deliveryFee||0;
+      const total=+d.grandTotal||subtotal-disc+tax+fee;
+
+      const div=document.createElement('div');
+      div.className='order'; div.dataset.status=status;
+      div.innerHTML=`
+        <div class="meta">
+          <div>
+            <div class="topline">
+              <strong>${escapeHtml(table)}</strong>
+              <span style="color:var(--muted)">${escapeHtml(guest)}</span>
+            </div>
+            <p><strong>Items:</strong></p>
+            <ul>${items.map(i=>`<li>${i.qty||1}× ${escapeHtml(i.name||i.itemName||'Unnamed')}</li>`).join('')}</ul>
+          </div>
+          <div style="text-align:right">
+            ${badge(status)}
+            <div style="color:var(--muted);font-size:0.9rem;">${method} (${payStatus})</div>
+            <div style="color:var(--muted);font-size:0.9rem;margin-top:6px;">${time}</div>
+          </div>
+        </div>
+        <p><strong>Total:</strong> <span style="color:var(--success);font-weight:700">Rp${total.toLocaleString('id-ID')}</span></p>
+        <p class="status">Status: ${status.toUpperCase()}</p>
+      `;
+
+      const ctrl=document.createElement('div');
+      ctrl.className='controls-row';
+      ['preparing','served','cancelled'].forEach(s=>{
+        const b=document.createElement('button');
+        b.className='btn minimal'; b.textContent=s;
+        b.onclick=()=>updateStatus(id,s);
+        ctrl.appendChild(b);
+      });
+      
+ // 📞 Guest / Member phone (normalized)
+ const guestPhone = resolveGuestPhone(d);
+
+ if (guestPhone) {
+   const phoneRow = document.createElement('p');
+   phoneRow.style.marginTop = '6px';
+
+   const phoneLink = document.createElement('a');
+   phoneLink.href = `tel:${guestPhone}`;
+   phoneLink.textContent = guestPhone;
+   phoneLink.style.fontWeight = '700';
+   phoneLink.style.color = '#111';
+
+   phoneRow.innerHTML = '📞 Phone: ';
+   phoneRow.appendChild(phoneLink);
+
+   div.appendChild(phoneRow);
+ }
+
+
+
+const lower = (table || '').toLowerCase();
+      const phone=(lower.includes('mille 1')&&phoneMap['mille 1'])||(lower.includes('mille 2')&&phoneMap['mille 2'])||(lower.includes('mille 3')&&phoneMap['mille 3']);
+      if(phone){
+        const a=document.createElement('a');
+        a.className='btn contact';
+        a.href=`https://wa.me/${phone}?text=${encodeURIComponent('Order '+id+' ('+table+')')}`;
+        a.target='_blank'; a.textContent='💬 Contact Mille';
+        ctrl.appendChild(a);
+      }
+
+ // ☎️ Contact guest directly
+ if (guestPhone) {
+   const callBtn = document.createElement('a');
+   callBtn.className = 'btn contact';
+   callBtn.href = `tel:${guestPhone}`;
+   callBtn.textContent = '📞 Call Guest';
+   ctrl.appendChild(callBtn);
+ }
+
+  if (guestPhone) {
+   const waBtn = document.createElement('a');
+   waBtn.className = 'btn contact';
+   waBtn.href = `https://wa.me/${guestPhone.replace(/\D/g,'')}?text=${encodeURIComponent(
+     `Hello, regarding your order ${id} (${table})`
+   )}`;
+   waBtn.target = '_blank';
+   waBtn.textContent = '💬 WhatsApp Guest';
+   ctrl.appendChild(waBtn);
+ }
+
+
+
+      div.appendChild(ctrl);
+      return div;
+    }
+
+async function updateStatus(id, status) {
+  const db = getDb();
+  if (!db) return;
+
+  await db.collection('orders').doc(id).update({
+    kitchenStatus: status,
+    status: status
+  });
+
+  loadedOrders.get(id)?.remove();
+  loadedOrders.delete(id);
+
+  stopRepeatingChime(id);
+  showBanner(`✅ Order ${id} → ${status}`);
+  setTimeout(loadOrders, 1000);
+}
+
+    function showBanner(msg,ms=2500){
+      const el=document.createElement('div');
+      el.textContent=msg;
+      Object.assign(el.style,{position:'fixed',bottom:'24px',left:'50%',transform:'translateX(-50%)',background:'#111',color:'#fff',padding:'8px 12px',borderRadius:'8px',zIndex:9999});
+      document.body.appendChild(el);
+      setTimeout(()=>el.remove(),ms);
+    }
+
+    const startRepeatingChime=id=>{
+      if(activeRepeaters.has(id))return;
+      const play=()=>audio.play().catch(()=>{});
+      const t=setInterval(play,6000); activeRepeaters.set(id,t); play();
+    };
+    const stopRepeatingChime=id=>{
+      if(activeRepeaters.has(id))clearInterval(activeRepeaters.get(id));
+      activeRepeaters.delete(id);
+    };
+    const stopAllChimes=()=>{activeRepeaters.forEach(t=>clearInterval(t));activeRepeaters.clear();};
+
+    function applyFilter(f){
+      currentFilter=f;
+      filterButtons.forEach(b=>b.classList.toggle('active',b.dataset.filter===f));
+      document.querySelectorAll('.order').forEach(el=>{
+        const s=el.dataset.status;
+        const incoming=f==='incoming'&&['pending','preparing'].includes(s);
+        el.style.display=(f==='all'||incoming||s===f)?'':'none';
+      });
+      if(![...document.querySelectorAll('.order')].some(e=>e.style.display!=='none'))
+        orderList.innerHTML+='<div class="empty">No orders match filter.</div>';
+      else document.querySelectorAll('.empty').forEach(e=>e.remove());
+    }
+
+    function loadOrders(){
+      const db=getDb(); if(!db){orderList.innerHTML='<div class="loading">Waiting for Firestore...</div>';return;}
+      const date=orderDate.value;
+      if(!date){orderList.innerHTML='<div class="empty">Please select a date.</div>';return;}
+      if(window._staff_unsub){try{window._staff_unsub();}catch{} window._staff_unsub=null;}
+      stopAllChimes(); orderList.innerHTML='<div class="loading">Loading…</div>'; loadedOrders.clear();
+      let initial=true;
+      const q=db.collection('orders').where('date','==',date).orderBy('timestamp','desc');
+      window._staff_unsub=q.onSnapshot(snap=>{
+        if(snap.empty&&initial){orderList.innerHTML='<div class="empty">No orders today.</div>';return;}
+        snap.docChanges().forEach(ch=>{
+          const id=ch.doc.id,d=ch.doc.data();
+          if(ch.type==='added'){
+            const el=createCard(id,d);
+            loadedOrders.set(id,el); orderList.prepend(el);
+            if(!initial && !notifiedOrders.has(id)){
+              startRepeatingChime(id); markNotified(id);
+            }
+          } else if(ch.type==='modified'){
+            const old=loadedOrders.get(id),el=createCard(id,d);
+            if(old&&old.parentElement)old.replaceWith(el); else orderList.prepend(el);
+            loadedOrders.set(id,el);
+            const s=(d.kitchenStatus||d.status||'').toLowerCase();
+            if(['preparing','served','cancelled'].includes(s)) stopRepeatingChime(id);
+          } else if(ch.type==='removed'){
+            loadedOrders.get(id)?.remove(); loadedOrders.delete(id); stopRepeatingChime(id);
+          }
+        });
+        applyFilter(currentFilter); initial=false;
+      });
+    }
+
+    filterButtons.forEach(b=>b.onclick=()=>applyFilter(b.dataset.filter));
+    orderDate.onchange=loadOrders;
+    document.addEventListener('DOMContentLoaded',()=>{
+      orderDate.value=todayJakarta();
+      setTimeout(loadOrders,200);
+    });
+  })();
+  </script>
+
+  <!-- ✅ Register PWA Worker -->
+<!-- ✅ Service Worker: Browser only (NOT WebView APK) -->
+  <script>
+  if ('serviceWorker' in navigator) {
+    if (window.IS_ANDROID_WEBVIEW) {
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(r => r.unregister());
+      });
+      console.log('🚫 Service workers disabled in Android WebView');
+    } else {
+      navigator.serviceWorker.register('/pwa-worker.js')
+        .then(r => console.log('✅ PWA worker registered', r.scope))
+        .catch(e => console.warn('❌ SW failed', e));
+    }
+  }
+  </script>
+
+  <!-- ✅ OneSignal Push (TWA compatible) -->
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  <script>
+if (!window.IS_ANDROID_WEBVIEW) {
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function(OneSignal) {
+      await OneSignal.init({
+        appId: "9d4e981e-3184-4ebb-9ac1-cdb4644b1ccd",
+        notifyButton: { enable: true },
+        serviceWorkerPath: "OneSignalSDKWorker.js",
+        serviceWorkerParam: { scope: "/" }
+      });
+      console.log("✅ OneSignal initialized (browser only)");
+    });
+  } else {
+    console.log('🚫 OneSignal disabled inside Android WebView');
+  }
+</script>
+</body>
+</html>
