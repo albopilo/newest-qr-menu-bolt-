@@ -4,24 +4,30 @@ const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 if (getApps().length === 0) {
-  initializeApp({
-    credential: cert(serviceAccount),
-  });
+  initializeApp({ credential: cert(serviceAccount) });
 }
 
 const db = getFirestore();
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
 exports.handler = async (event) => {
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 200, headers: corsHeaders, body: "" };
+  }
+
   try {
     const body = JSON.parse(event.body || "{}");
 
     if (!body.token) {
       return {
         statusCode: 400,
-        body: JSON.stringify({
-          success: false,
-          error: "Missing token",
-        }),
+        headers: corsHeaders,
+        body: JSON.stringify({ success: false, error: "Missing token" }),
       };
     }
 
@@ -33,19 +39,15 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 200,
-      body: JSON.stringify({
-        success: true,
-      }),
+      headers: corsHeaders,
+      body: JSON.stringify({ success: true }),
     };
   } catch (err) {
     console.error(err);
-
     return {
       statusCode: 500,
-      body: JSON.stringify({
-        success: false,
-        error: err.message,
-      }),
+      headers: corsHeaders,
+      body: JSON.stringify({ success: false, error: "Failed to register token" }),
     };
   }
 };

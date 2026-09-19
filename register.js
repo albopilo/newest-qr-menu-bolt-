@@ -36,10 +36,21 @@ function normalizePhone(input) {
     .replace(/^0+/, "0");
 }
 
+// Safe redirect helper: only allow relative same-origin URLs
+function safeRedirect(returnTo) {
+  const defaultUrl = "/";
+  if (!returnTo) return defaultUrl;
+  const decoded = decodeURIComponent(returnTo);
+  if (/^https?:\/\//i.test(decoded) || /^\/\//.test(decoded) || /^[a-z][a-z0-9+.-]*:/i.test(decoded)) {
+    return defaultUrl;
+  }
+  if (!decoded.startsWith("/")) return defaultUrl;
+  return decoded;
+}
+
 cancelBtn.addEventListener("click", () => {
-  // go back to previous page or index
   const returnTo = new URLSearchParams(window.location.search).get("return") || "/";
-  window.location.href = decodeURIComponent(returnTo);
+  window.location.href = safeRedirect(returnTo);
 });
 
 form.addEventListener("submit", async (e) => {
@@ -49,14 +60,13 @@ form.addEventListener("submit", async (e) => {
   const name = (nameInput.value || "").trim();
   const email = (emailInput.value || "").trim().toLowerCase();
   const phoneRaw = (phoneInput.value || "").trim();
-  const birthdate = (birthInput.value || "").trim(); // yyyy-mm-dd
+  const birthdate = (birthInput.value || "").trim();
 
   if (!name || !email || !phoneRaw || !birthdate) {
     showError("All fields are required.");
     return;
   }
 
-  // basic email check
   if (!/^\S+@\S+\.\S+$/.test(email)) {
     showError("Please enter a valid email address.");
     return;
@@ -65,53 +75,30 @@ form.addEventListener("submit", async (e) => {
   const phone = normalizePhone(phoneRaw);
 
   try {
-    // check phone
-    const phoneSnap = await db.collection("members").where("phone", "==", phone).limit(1).get();
-    if (!phoneSnap.empty) {
-      showError("This phone number is already registered. Please sign in instead.");
+    // Call server-side registration function (server sets discountRate, taxRate, tier, and ID)
+    const response = await fetch("/.netlify/functions/registerMember", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, phone, birthdate }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      const msg = result.error || "Failed to register. Please try again.";
+      showError(msg);
       return;
     }
-    // check email
-    const emailSnap = await db.collection("members").where("email", "==", email).limit(1).get();
-    if (!emailSnap.empty) {
-      showError("This email address is already registered. Please sign in instead.");
-      return;
-    }
 
-    // create member doc with a timestamp-like id (matching Exhibit A style)
-    const newId = String(Date.now());
-    const memberDoc = {
-      birthdate: birthdate,            // e.g. "2000-11-28"
-      email: email,
-      id: newId,
-      ktp: null,
-      lastRoomUpgrade: null,
-      monthlySinceUpgrade: 0,
-      name: name,
-      nameLower: name.toLowerCase(),
-      phone: phone,
-      redeemablePoints: 0,
-      roomUpgradeHistory: [],
-      spendingSinceUpgrade: 0,
-      tier: "Classic",                 // per your request
-      upgradeDate: null,
-      welcomed: true,
-      yearlySinceUpgrade: 0,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      discountRate: 0.10,
-      taxRate: 0.10
-    };
-
-    await db.collection("members").doc(newId).set(memberDoc);
-
-    // Auto sign-in: store currentUser in localStorage and redirect back
+    // Auto sign-in: store currentUser in localStorage
+    const member = result.member;
     const currentUser = {
-      phoneNumber: phone,
-      memberId: newId,
-      tier: memberDoc.tier,
-      discountRate: memberDoc.discountRate,
-      taxRate: memberDoc.taxRate,
-      displayName: memberDoc.name
+      phoneNumber: member.phoneNumber,
+      memberId: member.memberId,
+      tier: member.tier,
+      discountRate: member.discountRate,
+      taxRate: member.taxRate,
+      displayName: member.displayName
     };
     localStorage.setItem("currentUser", JSON.stringify(currentUser));
     localStorage.setItem("sessionStart", Date.now().toString());
@@ -119,7 +106,7 @@ form.addEventListener("submit", async (e) => {
     alert("Registration successful! You are now signed in.");
 
     const returnTo = new URLSearchParams(window.location.search).get("return") || "/";
-    window.location.href = decodeURIComponent(returnTo);
+    window.location.href = safeRedirect(returnTo);
 
   } catch (err) {
     console.error("Registration error:", err);

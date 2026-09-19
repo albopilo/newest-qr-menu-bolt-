@@ -12,7 +12,17 @@ if (getApps().length === 0) {
 
 const db = getFirestore();
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
 exports.handler = async (event) => {
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 200, headers: corsHeaders, body: "" };
+  }
+
   try {
     const body = JSON.parse(event.body || "{}");
 
@@ -23,6 +33,7 @@ exports.handler = async (event) => {
     if (tokens.length === 0) {
       return {
         statusCode: 200,
+        headers: corsHeaders,
         body: JSON.stringify({
           success: false,
           message: "No registered devices",
@@ -49,6 +60,7 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 200,
+      headers: corsHeaders,
       body: JSON.stringify({
         success: true,
         sent: result.successCount,
@@ -60,9 +72,10 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 500,
+      headers: corsHeaders,
       body: JSON.stringify({
         success: false,
-        error: err.message,
+        error: "Failed to send notification",
       }),
     };
   }
